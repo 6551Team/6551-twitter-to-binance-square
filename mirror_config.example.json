@@ -1,0 +1,20 @@
+{
+  "mode": "account",
+  "accounts": ["VitalikButerin", "cabornedefi"],
+  "keywords": "",
+  "hashtag": "",
+  "poll_interval_seconds": 300,
+  "min_likes": 0,
+  "min_retweets": 0,
+  "max_posts_per_run": 5,
+  "include_replies": false,
+  "include_retweets": false,
+  "translate": false,
+  "translate_to": "zh",
+  "content_template": "{content}\n\n{source_attribution}\n{tool_attribution}\n{hashtags}",
+  "show_source": true,
+  "show_tool_attribution": true,
+  "add_hashtags": ["Crypto", "Web3"],
+  "state_file": "mirror_state.json",
+  "dry_run": false
+}
