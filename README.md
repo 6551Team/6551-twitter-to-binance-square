@@ -1,130 +1,148 @@
-# Twitter → Binance Square 自动搬运工具
+# Twitter to Binance Square
 
-自动采集 Twitter/X 推文，转换内容格式后发布到币安广场（Binance Square）。
+This skill mirrors Twitter/X content to Binance Square and supports:
 
-## 目录结构
+- Binance Square image publishing.
+- Binance Square video publishing.
+- Explicit tag handling.
+- A local MCP server for direct Square publishing.
 
-```
-twitter-to-binance-square/
-├── SKILL.md                        # Skill 定义（入口文件）
-├── README.md                       # 使用说明（本文件）
-├── mirror_config.example.json      # 配置模板
-└── scripts/
-    └── auto_mirror.py              # 自动化脚本
-```
+This folder provides two entry points:
 
-## 快速开始
+- `scripts/auto_mirror.py` mirrors Twitter/X posts to Binance Square.
+- `scripts/mcp_server.py` exposes one MCP tool for direct Square publishing.
+- `LICENSE` contains the project license.
 
-### 1. 准备凭证
+Supported Square publish types:
 
-| 凭证 | 获取方式 |
-|------|---------|
-| `TWITTER_TOKEN` | 访问 https://6551.io/mcp 注册并获取 API Token |
-| `SQUARE_API_KEY` | 登录币安后访问 [创作者中心](https://www.binance.com/zh-CN/square/creator-center/home)，在页面右侧点击「查看 API」申请 OpenAPI Key |
+- Text post: `contentType=1`, `bodyTextOnly`.
+- Image post: `contentType=1`, `bodyTextOnly`, `imageList`, max 4 images.
+- Video post: `contentType=3`, `fileTicket`, `cover`, `videoTimeSeconds`, `isPublish=true`.
+- Tags: normalized `#tags` appended into `bodyTextOnly`; Square parses them server-side.
 
-### 2. 设置环境变量
+Images and video are mutually exclusive in one post.
 
-```bash
-export TWITTER_TOKEN="your_6551_token_here"
-export SQUARE_API_KEY="your_square_api_key_here"
-```
+## Credentials
 
-Windows (PowerShell):
+Get the credentials first:
+
+| Credential | How to obtain |
+|---|---|
+| `TWITTER_TOKEN` | Register at the 6551 official site https://6551.io/mcp and get the API token. |
+| `BINANCE_SQUARE_OPENAPI_KEY` | Sign in to Binance, open the [Creator Center](https://www.binance.com/en/square/creator-center/home), and apply for an OpenAPI key via "View API" on the right. |
+
+PowerShell:
+
 ```powershell
-$env:TWITTER_TOKEN = "your_6551_token_here"
-$env:SQUARE_API_KEY = "your_square_api_key_here"
+$env:TWITTER_TOKEN = "your_6551_token"
+$env:BINANCE_SQUARE_OPENAPI_KEY = "your_square_openapi_key"
 ```
 
-### 3. 运行
+`TWITTER_TOKEN` is a 6551 Twitter API token. Use your own token from 6551 or an existing environment variable that points to the same 6551 Twitter API service.
+`SQUARE_API_KEY` is accepted as a backward-compatible alias for `BINANCE_SQUARE_OPENAPI_KEY`.
 
-以下命令均从 `twitter-to-binance-square/` 目录下执行。
+The Square key is read from the environment only. Do not pass it as a CLI or MCP parameter.
 
-#### 方式一：监控指定账号
+## What Was Verified
 
-```bash
-python scripts/auto_mirror.py --mode account --accounts VitalikButerin,elonmusk --interval 300
+Verified locally:
+
+- Python syntax for `auto_mirror.py` and `mcp_server.py`.
+- CLI parameters shown by `python scripts/auto_mirror.py --help`.
+- Dry-run request-body construction for text+tags, image posts, and video posts.
+- MCP import and `publish_square_post(..., dry_run=True)`.
+- Live Twitter account fetch with a valid 6551 `TWITTER_TOKEN`.
+- Tweet image extraction now prefers direct `pbs.twimg.com/media/...` image URLs over `x.com/.../photo/...` page URLs.
+
+Verified live with a temporary Square OpenAPI key on 2026-05-23:
+
+- Image + tags post succeeded with `contentType=1`, `imageList`, and tags in `bodyTextOnly`.
+- Video + tags post succeeded with `contentType=3`, `fileTicket`, `cover`, `videoTimeSeconds`, `isPublish=true`, and tags in `bodyTextOnly`.
+- Twitter image URL end-to-end post succeeded: a `pbs.twimg.com` source image was uploaded and published as a Square-hosted `public.bnbstatic.com` image.
+
+Not verified in this environment:
+
+- Full unattended mirror loop over multiple tweets and polling cycles.
+
+The Binance request-body mapping follows Binance's current public `square-post` skill v2 scripts.
+
+## Mirror Tweets
+
+Run from this directory.
+
+Preview one account cycle:
+
+```powershell
+python scripts/auto_mirror.py --mode account --accounts VitalikButerin --tags Crypto,Web3 --dry-run --once
 ```
 
-#### 方式二：监控关键词话题
+Search mode:
 
-```bash
-python scripts/auto_mirror.py --mode search --keywords "bitcoin ETF" --min-likes 100 --interval 600
+```powershell
+python scripts/auto_mirror.py --mode search --keywords "bitcoin ETF" --min-likes 100 --min-retweets 10 --once
 ```
 
-#### 方式三：监控 Hashtag
+Hashtag mode:
 
-```bash
-python scripts/auto_mirror.py --mode hashtag --hashtag bitcoin --min-likes 500 --interval 600
+```powershell
+python scripts/auto_mirror.py --mode hashtag --hashtag bitcoin --min-likes 500 --once
 ```
 
-#### 方式四：使用配置文件
+Use a config file:
 
-```bash
-cp mirror_config.example.json mirror_config.json
-# 编辑 mirror_config.json 修改配置
+```powershell
+Copy-Item mirror_config.example.json mirror_config.json
 python scripts/auto_mirror.py --config mirror_config.json
 ```
 
-## 命令行参数
+## Attach Media
 
-| 参数 | 说明 |
-|------|------|
-| `--config`, `-c` | JSON 配置文件路径 |
-| `--mode` | 监控模式：`account` / `search` / `hashtag` |
-| `--accounts` | 逗号分隔的 Twitter 用户名 |
-| `--keywords` | 搜索关键词 |
-| `--hashtag` | 监控的 Hashtag（不含 #） |
-| `--interval` | 轮询间隔（秒），默认 300 |
-| `--min-likes` | 最低点赞数阈值 |
-| `--max-posts` | 每轮最大发帖数 |
-| `--translate` | 开启翻译 |
-| `--translate-to` | 翻译目标语言代码（默认 zh） |
-| `--dry-run` | 预览模式，只输出不发帖 |
-| `--once` | 只执行一轮后退出 |
-| `--state-file` | 状态文件路径 |
+By default, the mirror tries to carry over media found in the source tweet.
 
-## 典型用法
+Ignore source tweet media:
 
-### 先预览，再正式运行
-
-```bash
-# 第一步：干跑预览，确认内容格式
-python scripts/auto_mirror.py --mode account --accounts VitalikButerin --dry-run --once
-
-# 第二步：正式运行
-python scripts/auto_mirror.py --mode account --accounts VitalikButerin --interval 300
-```
-
-### 后台常驻运行
-
-Linux/Mac:
-```bash
-nohup python scripts/auto_mirror.py --config mirror_config.json > mirror.log 2>&1 &
-```
-
-Windows (PowerShell):
 ```powershell
-Start-Process python -ArgumentList "scripts/auto_mirror.py", "--config", "mirror_config.json" -NoNewWindow -RedirectStandardOutput "mirror.log"
+python scripts/auto_mirror.py --mode account --accounts Binance --no-tweet-images --no-tweet-videos --once
 ```
 
-### 定时任务 (Cron)
+Attach explicit images to each mirrored post:
 
-每小时执行一次单轮：
-```cron
-0 * * * * cd /path/to/twitter-to-binance-square && TWITTER_TOKEN=xxx SQUARE_API_KEY=xxx python scripts/auto_mirror.py --config mirror_config.json --once >> mirror.log 2>&1
+```powershell
+python scripts/auto_mirror.py --mode account --accounts Binance --image .\chart1.png --image .\chart2.png --once
 ```
 
-## 状态文件
+Attach one explicit video:
 
-脚本会自动创建 `mirror_state.json` 用于：
-- 记录已发布的推文 ID（防止重复发帖）
-- 跟踪每日发帖数量
-- 保存发帖日志
+```powershell
+python scripts/auto_mirror.py --mode account --accounts Binance --video .\clip.mp4 --video-duration 12.5 --once
+```
 
-## 注意事项
+If `--video-duration` is omitted, `ffprobe` must be installed. If `--video-cover` is omitted, `ffmpeg` must be installed to extract the first frame as the cover.
 
-1. **币安广场每日最多发帖 100 条**，脚本会自动检测并停止
-2. **内容敏感词**会被币安过滤，被拦截的推文会自动跳过
-3. **务必标注来源**，模板中默认包含 `Source: @username on X`
-4. **首次运行建议使用 `--dry-run`** 确认内容格式
-5. 无外部依赖，仅使用 Python 标准库
+## MCP Server
+
+Run:
+
+```powershell
+python scripts/mcp_server.py
+```
+
+Tool: `publish_square_post`
+
+Parameters:
+
+| Parameter | Required | Description |
+|---|---:|---|
+| `text` | Yes | Post text. |
+| `tags` | No | List of tags. Values may include or omit `#`. |
+| `images` | No | List of local image paths or image URLs. Max 4. |
+| `video` | No | One local video path or video URL. |
+| `video_duration_seconds` | No | Positive duration in seconds. If omitted, `ffprobe` is used. |
+| `video_cover` | No | Local image path or URL for the video cover. If omitted, `ffmpeg` extracts the first frame. |
+| `dry_run` | No | Return the request body without uploading or publishing. |
+
+Do not pass both `images` and `video`.
+
+## Config Fields
+
+Use `mirror_config.example.json` as the source of truth for config keys.
